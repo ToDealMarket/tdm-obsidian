@@ -1,0 +1,16 @@
+.tdm-obsidian-modal .setting-item {
+  border: 0;
+  padding-inline: 0;
+}
+
+.tdm-obsidian-result {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  line-height: 1.5;
+}
