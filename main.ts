@@ -1,5 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execFile, type ChildProcess } from "node:child_process";
 import {
   App,
   FileSystemAdapter,
@@ -13,8 +12,9 @@ import {
   normalizePath,
 } from "obsidian";
 
-const execFileAsync = promisify(execFile);
 const DEFAULT_GATEWAY_URL = "https://tdm.todealmarket.com";
+const MAX_MODAL_TEXT_LENGTH = 200_000;
+const MAX_INLINE_PREVIEW_CHARS = 50_000;
 
 interface TdmObsidianSettings {
   cliPath: string;
@@ -126,12 +126,73 @@ function buildCliErrorMessage(message: string, stdout: string, stderr: string): 
   return [message, output].filter(Boolean).join("\n\n");
 }
 
+function normalizeUsdAmount(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed) || Number(trimmed) <= 0) {
+    throw new Error(`${fieldName} must be a positive USD amount with up to 2 decimals.`);
+  }
+  return trimmed;
+}
+
+function sanitizeCliToken(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${fieldName} is required.`);
+  }
+  if (/[\r\n]/.test(trimmed)) {
+    throw new Error(`${fieldName} must not contain line breaks.`);
+  }
+  return trimmed;
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`;
+}
+
+function resolveCliInvocation(
+  cliPath: string,
+  args: string[],
+): { file: string; args: string[]; shell: boolean } {
+  const sanitizedCliPath = sanitizeCliToken(cliPath, "TDM CLI path");
+  const sanitizedArgs = args.map((arg, index) =>
+    sanitizeCliToken(arg, `CLI argument ${index + 1}`),
+  );
+
+  if (process.platform !== "win32") {
+    return {
+      file: sanitizedCliPath,
+      args: sanitizedArgs,
+      shell: false,
+    };
+  }
+
+  const commandLine = [sanitizedCliPath, ...sanitizedArgs].map(quoteWindowsCmdArg).join(" ");
+  return {
+    file: "cmd.exe",
+    args: ["/d", "/s", "/c", commandLine],
+    shell: false,
+  };
+}
+
+function buildInlinePreview(content: string): { body: string; truncated: boolean } {
+  if (content.length <= MAX_INLINE_PREVIEW_CHARS) {
+    return { body: content, truncated: false };
+  }
+  return {
+    body:
+      `${content.slice(0, MAX_INLINE_PREVIEW_CHARS)}\n\n` +
+      "[preview truncated to keep Obsidian responsive; switch unlock mode to Create unlocked note for the full content]",
+    truncated: true,
+  };
+}
+
 class SingleInputModal extends Modal {
   private value: string;
   private readonly titleText: string;
   private readonly fieldName: string;
   private readonly placeholder: string;
   private resolvePromise: (value: string | null) => void;
+  private focusTimeoutId: number | null = null;
 
   constructor(
     app: App,
@@ -167,7 +228,7 @@ class SingleInputModal extends Modal {
           .onChange((value) => {
             this.value = value;
           });
-        setTimeout(() => text.inputEl.focus(), 0);
+        this.focusTimeoutId = window.setTimeout(() => text.inputEl.focus(), 0);
       });
 
     new Setting(contentEl)
@@ -190,6 +251,10 @@ class SingleInputModal extends Modal {
       });
 
     this.onClose = () => {
+      if (this.focusTimeoutId !== null) {
+        window.clearTimeout(this.focusTimeoutId);
+        this.focusTimeoutId = null;
+      }
       contentEl.empty();
       if (!submitted) {
         this.resolvePromise(null);
@@ -317,7 +382,10 @@ class OutputModal extends Modal {
   constructor(app: App, title: string, body: string) {
     super(app);
     this.titleText = title;
-    this.bodyText = body;
+    this.bodyText =
+      body.length > MAX_MODAL_TEXT_LENGTH
+        ? `${body.slice(0, MAX_MODAL_TEXT_LENGTH)}\n\n[output truncated to keep Obsidian responsive]`
+        : body;
   }
 
   onOpen(): void {
@@ -331,6 +399,8 @@ class OutputModal extends Modal {
 
 export default class TdmObsidianPlugin extends Plugin {
   settings: TdmObsidianSettings = DEFAULT_SETTINGS;
+  private cliCommandInFlight = false;
+  private activeCliChild: ChildProcess | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -391,6 +461,14 @@ export default class TdmObsidianPlugin extends Plugin {
     });
   }
 
+  onunload(): void {
+    if (this.activeCliChild && !this.activeCliChild.killed) {
+      this.activeCliChild.kill();
+    }
+    this.activeCliChild = null;
+    this.cliCommandInFlight = false;
+  }
+
   async loadSettings(): Promise<void> {
     this.settings = {
       ...DEFAULT_SETTINGS,
@@ -427,17 +505,38 @@ export default class TdmObsidianPlugin extends Plugin {
     args: string[],
     options: { timeoutMs?: number } = {},
   ): Promise<CliResult> {
+    if (this.cliCommandInFlight) {
+      throw new Error("Another TDM command is already running. Wait for it to finish first.");
+    }
+    this.cliCommandInFlight = true;
     try {
-      const result = await execFileAsync(this.settings.cliPath, args, {
-        timeout: options.timeoutMs ?? 60_000,
-        shell: process.platform === "win32",
-        windowsHide: true,
-        maxBuffer: 10 * 1024 * 1024,
+      const invocation = resolveCliInvocation(this.settings.cliPath, args);
+      return await new Promise<CliResult>((resolve, reject) => {
+        const child = execFile(
+          invocation.file,
+          invocation.args,
+          {
+            timeout: options.timeoutMs ?? 60_000,
+            shell: invocation.shell,
+            windowsHide: true,
+            maxBuffer: 10 * 1024 * 1024,
+          },
+          (error, stdout, stderr) => {
+            if (this.activeCliChild === child) {
+              this.activeCliChild = null;
+            }
+            if (error) {
+              reject(Object.assign(error, { stdout, stderr }));
+              return;
+            }
+            resolve({
+              stdout: stdout ?? "",
+              stderr: stderr ?? "",
+            });
+          },
+        );
+        this.activeCliChild = child;
       });
-      return {
-        stdout: result.stdout ?? "",
-        stderr: result.stderr ?? "",
-      };
     } catch (error) {
       const stdout =
         typeof error === "object" && error && "stdout" in error
@@ -449,6 +548,8 @@ export default class TdmObsidianPlugin extends Plugin {
           : "";
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(buildCliErrorMessage(message, stdout, stderr));
+    } finally {
+      this.cliCommandInFlight = false;
     }
   }
 
@@ -487,6 +588,15 @@ export default class TdmObsidianPlugin extends Plugin {
     if (!baseUrl) {
       throw new Error("Set Public notes base URL in plugin settings first.");
     }
+    let parsedBaseUrl: URL;
+    try {
+      parsedBaseUrl = new URL(baseUrl);
+    } catch {
+      throw new Error("Public notes base URL must be a valid absolute URL.");
+    }
+    if (parsedBaseUrl.protocol !== "http:" && parsedBaseUrl.protocol !== "https:") {
+      throw new Error("Public notes base URL must use http or https.");
+    }
 
     const prefix = this.settings.publicPathPrefix.trim().replace(/^\/+|\/+$/g, "");
     const extension = this.settings.publicExtension.trim();
@@ -502,7 +612,7 @@ export default class TdmObsidianPlugin extends Plugin {
       .filter(Boolean)
       .map((part) => encodeURIComponent(part));
 
-    return `${baseUrl.replace(/\/+$/g, "")}/${pathParts.join("/")}`;
+    return `${parsedBaseUrl.toString().replace(/\/+$/g, "")}/${pathParts.join("/")}`;
   }
 
   private async updateFrontmatter(
@@ -559,7 +669,10 @@ export default class TdmObsidianPlugin extends Plugin {
       );
     }
 
-    return { resourceId, priceUsd };
+    return {
+      resourceId,
+      priceUsd: normalizeUsdAmount(priceUsd, "tdm_price_usd"),
+    };
   }
 
   private async runConnect(): Promise<void> {
@@ -584,8 +697,15 @@ export default class TdmObsidianPlugin extends Plugin {
     const activePrice =
       String(this.app.metadataCache.getFileCache(file)?.frontmatter?.["tdm_price_usd"] ?? "").trim() ||
       this.settings.defaultPriceUsd;
-    const priceUsd = await this.promptForPrice(activePrice);
-    if (!priceUsd) {
+    const requestedPriceUsd = await this.promptForPrice(activePrice);
+    if (!requestedPriceUsd) {
+      return;
+    }
+    let priceUsd: string;
+    try {
+      priceUsd = normalizeUsdAmount(requestedPriceUsd, "Price in USD");
+    } catch (error) {
+      new Notice(error instanceof Error ? error.message : String(error), 6000);
       return;
     }
 
@@ -681,13 +801,16 @@ export default class TdmObsidianPlugin extends Plugin {
 
       if (payload.delivery_type === "INLINE" && typeof payload.content === "string") {
         if (this.settings.unlockMode === "preview") {
+          const preview = buildInlinePreview(payload.content);
           new OutputModal(
             this.app,
             "Unlocked note preview",
-            payload.content,
+            preview.body,
           ).open();
           new Notice(
-            "Unlocked content opened in read-only preview. It was not written to your vault.",
+            preview.truncated
+              ? "Unlocked content preview was truncated to keep Obsidian responsive. Switch unlock mode to Create unlocked note for the full content."
+              : "Unlocked content opened in read-only preview. It was not written to your vault.",
             5000,
           );
           return;
@@ -761,6 +884,13 @@ export default class TdmObsidianPlugin extends Plugin {
       new Notice("Amount and destination wallet are required.", 5000);
       return;
     }
+    let normalizedAmountUsd: string;
+    try {
+      normalizedAmountUsd = normalizeUsdAmount(request.amountUsd, "Amount in USD");
+    } catch (error) {
+      new Notice(error instanceof Error ? error.message : String(error), 5000);
+      return;
+    }
 
     try {
       const result = await this.runCliCommand(
@@ -768,7 +898,7 @@ export default class TdmObsidianPlugin extends Plugin {
           "payout",
           "request",
           "--amount",
-          request.amountUsd,
+          normalizedAmountUsd,
           "--to",
           request.destinationAddress,
           "--chain",

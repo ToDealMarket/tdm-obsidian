@@ -24,10 +24,10 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_node_child_process = require("node:child_process");
-var import_node_util = require("node:util");
 var import_obsidian = require("obsidian");
-var execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
 var DEFAULT_GATEWAY_URL = "https://tdm.todealmarket.com";
+var MAX_MODAL_TEXT_LENGTH = 2e5;
+var MAX_INLINE_PREVIEW_CHARS = 5e4;
 var DEFAULT_SETTINGS = {
   cliPath: "tdm",
   gatewayUrl: DEFAULT_GATEWAY_URL,
@@ -61,12 +61,63 @@ function buildCliErrorMessage(message, stdout, stderr) {
   }
   return [message, output].filter(Boolean).join("\n\n");
 }
+function normalizeUsdAmount(value, fieldName) {
+  const trimmed = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed) || Number(trimmed) <= 0) {
+    throw new Error(`${fieldName} must be a positive USD amount with up to 2 decimals.`);
+  }
+  return trimmed;
+}
+function sanitizeCliToken(value, fieldName) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${fieldName} is required.`);
+  }
+  if (/[\r\n]/.test(trimmed)) {
+    throw new Error(`${fieldName} must not contain line breaks.`);
+  }
+  return trimmed;
+}
+function quoteWindowsCmdArg(value) {
+  return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`;
+}
+function resolveCliInvocation(cliPath, args) {
+  const sanitizedCliPath = sanitizeCliToken(cliPath, "TDM CLI path");
+  const sanitizedArgs = args.map(
+    (arg, index) => sanitizeCliToken(arg, `CLI argument ${index + 1}`)
+  );
+  if (process.platform !== "win32") {
+    return {
+      file: sanitizedCliPath,
+      args: sanitizedArgs,
+      shell: false
+    };
+  }
+  const commandLine = [sanitizedCliPath, ...sanitizedArgs].map(quoteWindowsCmdArg).join(" ");
+  return {
+    file: "cmd.exe",
+    args: ["/d", "/s", "/c", commandLine],
+    shell: false
+  };
+}
+function buildInlinePreview(content) {
+  if (content.length <= MAX_INLINE_PREVIEW_CHARS) {
+    return { body: content, truncated: false };
+  }
+  return {
+    body: `${content.slice(0, MAX_INLINE_PREVIEW_CHARS)}
+
+[preview truncated to keep Obsidian responsive; switch unlock mode to Create unlocked note for the full content]`,
+    truncated: true
+  };
+}
 var SingleInputModal = class extends import_obsidian.Modal {
   value;
   titleText;
   fieldName;
   placeholder;
   resolvePromise;
+  focusTimeoutId = null;
   constructor(app, options) {
     super(app);
     this.titleText = options.title;
@@ -85,7 +136,7 @@ var SingleInputModal = class extends import_obsidian.Modal {
       text.setPlaceholder(this.placeholder).setValue(this.value).onChange((value) => {
         this.value = value;
       });
-      setTimeout(() => text.inputEl.focus(), 0);
+      this.focusTimeoutId = window.setTimeout(() => text.inputEl.focus(), 0);
     });
     new import_obsidian.Setting(contentEl).addButton((button) => {
       button.setButtonText("Cancel").onClick(() => {
@@ -101,6 +152,10 @@ var SingleInputModal = class extends import_obsidian.Modal {
       });
     });
     this.onClose = () => {
+      if (this.focusTimeoutId !== null) {
+        window.clearTimeout(this.focusTimeoutId);
+        this.focusTimeoutId = null;
+      }
       contentEl.empty();
       if (!submitted) {
         this.resolvePromise(null);
@@ -172,7 +227,9 @@ var OutputModal = class extends import_obsidian.Modal {
   constructor(app, title, body) {
     super(app);
     this.titleText = title;
-    this.bodyText = body;
+    this.bodyText = body.length > MAX_MODAL_TEXT_LENGTH ? `${body.slice(0, MAX_MODAL_TEXT_LENGTH)}
+
+[output truncated to keep Obsidian responsive]` : body;
   }
   onOpen() {
     const { contentEl } = this;
@@ -184,6 +241,8 @@ var OutputModal = class extends import_obsidian.Modal {
 };
 var TdmObsidianPlugin = class extends import_obsidian.Plugin {
   settings = DEFAULT_SETTINGS;
+  cliCommandInFlight = false;
+  activeCliChild = null;
   async onload() {
     await this.loadSettings();
     this.addSettingTab(new TdmObsidianSettingTab(this.app, this));
@@ -237,6 +296,13 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
       }
     });
   }
+  onunload() {
+    if (this.activeCliChild && !this.activeCliChild.killed) {
+      this.activeCliChild.kill();
+    }
+    this.activeCliChild = null;
+    this.cliCommandInFlight = false;
+  }
   async loadSettings() {
     this.settings = {
       ...DEFAULT_SETTINGS,
@@ -265,22 +331,45 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
     return args;
   }
   async runCliCommand(args, options = {}) {
+    if (this.cliCommandInFlight) {
+      throw new Error("Another TDM command is already running. Wait for it to finish first.");
+    }
+    this.cliCommandInFlight = true;
     try {
-      const result = await execFileAsync(this.settings.cliPath, args, {
-        timeout: options.timeoutMs ?? 6e4,
-        shell: process.platform === "win32",
-        windowsHide: true,
-        maxBuffer: 10 * 1024 * 1024
+      const invocation = resolveCliInvocation(this.settings.cliPath, args);
+      return await new Promise((resolve, reject) => {
+        const child = (0, import_node_child_process.execFile)(
+          invocation.file,
+          invocation.args,
+          {
+            timeout: options.timeoutMs ?? 6e4,
+            shell: invocation.shell,
+            windowsHide: true,
+            maxBuffer: 10 * 1024 * 1024
+          },
+          (error, stdout, stderr) => {
+            if (this.activeCliChild === child) {
+              this.activeCliChild = null;
+            }
+            if (error) {
+              reject(Object.assign(error, { stdout, stderr }));
+              return;
+            }
+            resolve({
+              stdout: stdout ?? "",
+              stderr: stderr ?? ""
+            });
+          }
+        );
+        this.activeCliChild = child;
       });
-      return {
-        stdout: result.stdout ?? "",
-        stderr: result.stderr ?? ""
-      };
     } catch (error) {
       const stdout = typeof error === "object" && error && "stdout" in error ? String(error.stdout ?? "") : "";
       const stderr = typeof error === "object" && error && "stderr" in error ? String(error.stderr ?? "") : "";
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(buildCliErrorMessage(message, stdout, stderr));
+    } finally {
+      this.cliCommandInFlight = false;
     }
   }
   async promptForPrice(initialValue) {
@@ -312,6 +401,15 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
     if (!baseUrl) {
       throw new Error("Set Public notes base URL in plugin settings first.");
     }
+    let parsedBaseUrl;
+    try {
+      parsedBaseUrl = new URL(baseUrl);
+    } catch {
+      throw new Error("Public notes base URL must be a valid absolute URL.");
+    }
+    if (parsedBaseUrl.protocol !== "http:" && parsedBaseUrl.protocol !== "https:") {
+      throw new Error("Public notes base URL must use http or https.");
+    }
     const prefix = this.settings.publicPathPrefix.trim().replace(/^\/+|\/+$/g, "");
     const extension = this.settings.publicExtension.trim();
     let relativePath = (0, import_obsidian.normalizePath)(file.path);
@@ -319,7 +417,7 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
       relativePath = relativePath.replace(/\.md$/i, extension);
     }
     const pathParts = [prefix, relativePath].filter(Boolean).join("/").split("/").filter(Boolean).map((part) => encodeURIComponent(part));
-    return `${baseUrl.replace(/\/+$/g, "")}/${pathParts.join("/")}`;
+    return `${parsedBaseUrl.toString().replace(/\/+$/g, "")}/${pathParts.join("/")}`;
   }
   async updateFrontmatter(file, data) {
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
@@ -356,7 +454,10 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
         "This note is missing TDM unlock metadata. Expected tdm_resource_key or tdm_public_url plus tdm_price_usd in frontmatter."
       );
     }
-    return { resourceId, priceUsd };
+    return {
+      resourceId,
+      priceUsd: normalizeUsdAmount(priceUsd, "tdm_price_usd")
+    };
   }
   async runConnect() {
     new import_obsidian.Notice("TDM connect is starting. Complete the wallet flow in your browser.", 5e3);
@@ -377,8 +478,15 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
   }
   async runMakeCurrentNotePayable(file) {
     const activePrice = String(this.app.metadataCache.getFileCache(file)?.frontmatter?.["tdm_price_usd"] ?? "").trim() || this.settings.defaultPriceUsd;
-    const priceUsd = await this.promptForPrice(activePrice);
-    if (!priceUsd) {
+    const requestedPriceUsd = await this.promptForPrice(activePrice);
+    if (!requestedPriceUsd) {
+      return;
+    }
+    let priceUsd;
+    try {
+      priceUsd = normalizeUsdAmount(requestedPriceUsd, "Price in USD");
+    } catch (error) {
+      new import_obsidian.Notice(error instanceof Error ? error.message : String(error), 6e3);
       return;
     }
     let publicUrl;
@@ -463,13 +571,14 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
       }
       if (payload.delivery_type === "INLINE" && typeof payload.content === "string") {
         if (this.settings.unlockMode === "preview") {
+          const preview = buildInlinePreview(payload.content);
           new OutputModal(
             this.app,
             "Unlocked note preview",
-            payload.content
+            preview.body
           ).open();
           new import_obsidian.Notice(
-            "Unlocked content opened in read-only preview. It was not written to your vault.",
+            preview.truncated ? "Unlocked content preview was truncated to keep Obsidian responsive. Switch unlock mode to Create unlocked note for the full content." : "Unlocked content opened in read-only preview. It was not written to your vault.",
             5e3
           );
           return;
@@ -539,13 +648,20 @@ The URL was copied when possible.`
       new import_obsidian.Notice("Amount and destination wallet are required.", 5e3);
       return;
     }
+    let normalizedAmountUsd;
+    try {
+      normalizedAmountUsd = normalizeUsdAmount(request.amountUsd, "Amount in USD");
+    } catch (error) {
+      new import_obsidian.Notice(error instanceof Error ? error.message : String(error), 5e3);
+      return;
+    }
     try {
       const result = await this.runCliCommand(
         this.buildCliArgs([
           "payout",
           "request",
           "--amount",
-          request.amountUsd,
+          normalizedAmountUsd,
           "--to",
           request.destinationAddress,
           "--chain",
