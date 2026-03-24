@@ -1,7 +1,7 @@
 {
   "id": "tdm-obsidian",
   "name": "TDM for Obsidian",
-  "version": "0.0.1-beta",
+  "version": "0.0.1",
   "minAppVersion": "1.5.0",
   "description": "Make notes payable with TDM, check creator balance, and request payouts from inside Obsidian.",
   "author": "ToDealMarket",

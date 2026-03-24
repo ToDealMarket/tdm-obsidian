@@ -22,7 +22,7 @@
    ██║    ██████╔╝ ██║ ╚═╝ ██║
    ╚═╝    ╚═════╝  ╚═╝     ╚═╝
 
-TDM for Obsidian [V0.0.1-BETA]
+TDM for Obsidian [V0.0.1]
 Desktop-First Note Monetization
 Mode: local-first | Docs: todealmarket.com/docs
 ```
@@ -81,6 +81,19 @@ If the CLI is missing, install it with:
 ```bash
 npm install -g tdm-sdk
 ```
+
+## Obsidian Community Release Notes
+
+This repository now matches the expected Community Plugin release shape:
+
+- `manifest.json`
+- `versions.json`
+- `main.js`
+- `styles.css`
+- `LICENSE`
+
+For GitHub Releases, upload `main.js`, `manifest.json`, and `styles.css` as
+separate assets and tag the release exactly as `0.0.1`.
 
 ---
 
@@ -224,9 +237,9 @@ After making a note payable, the plugin stores fields like:
 tdm_price_usd: 5.00
 tdm_public_url: https://notes.example.com/my-note
 tdm_resource_key: res_abc123
-tdm_service_id: srv_xyz789
+tdm_service_id: svc_note_unlock_a1b2c3d4
 tdm_endpoint_path: /api/notes/unlock
-tdm_delivery_type: content
+tdm_delivery_type: INLINE
 tdm_last_synced_at: 2026-03-23T10:30:00Z
 ---
 ```

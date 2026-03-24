@@ -1,6 +1,6 @@
 {
   "name": "tdm-obsidian",
-  "version": "0.0.1-beta",
+  "version": "0.0.1",
   "description": "Desktop-first Obsidian plugin for TDM note monetization",
   "private": true,
   "main": "main.js",

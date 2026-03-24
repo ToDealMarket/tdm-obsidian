@@ -42,14 +42,41 @@ var DEFAULT_SETTINGS = {
 var CLI_INSTALL_HINT = "TDM CLI not found. Run: npm install -g tdm-sdk";
 function extractJsonPayload(stdout) {
   const trimmed = stdout.trim();
-  const objectStart = trimmed.indexOf("{");
-  const arrayStart = trimmed.indexOf("[");
-  const starts = [objectStart, arrayStart].filter((value) => value >= 0);
-  const jsonStart = starts.length > 0 ? Math.min(...starts) : -1;
-  if (jsonStart < 0) {
+  if (!trimmed) {
     throw new Error("No JSON payload found in CLI output.");
   }
-  return JSON.parse(trimmed.slice(jsonStart));
+  const candidateStarts = /* @__PURE__ */ new Set();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    candidateStarts.add(0);
+  }
+  for (let index = 0; index < trimmed.length; index += 1) {
+    if (trimmed[index] === "\n") {
+      let nextIndex = index + 1;
+      while (nextIndex < trimmed.length && /\s/.test(trimmed[nextIndex] ?? "")) {
+        nextIndex += 1;
+      }
+      const nextChar = trimmed[nextIndex];
+      if (nextChar === "{" || nextChar === "[") {
+        candidateStarts.add(nextIndex);
+      }
+    }
+  }
+  for (const start of candidateStarts) {
+    const candidate = trimmed.slice(start);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+  }
+  const firstBrace = trimmed.indexOf("{");
+  const firstBracket = trimmed.indexOf("[");
+  const fallbackStarts = [firstBrace, firstBracket].filter((value) => value >= 0);
+  if (fallbackStarts.length === 0) {
+    throw new Error("No JSON payload found in CLI output.");
+  }
+  const fallbackStart = Math.min(...fallbackStarts);
+  return JSON.parse(trimmed.slice(fallbackStart));
 }
 function isCliNotFoundError(message) {
   return /\bENOENT\b/i.test(message) || /\bnot found\b/i.test(message) || /\bnot recognized\b/i.test(message) || /\bcannot find\b/i.test(message);
@@ -67,6 +94,32 @@ function normalizeUsdAmount(value, fieldName) {
     throw new Error(`${fieldName} must be a positive USD amount with up to 2 decimals.`);
   }
   return trimmed;
+}
+function normalizeHttpUrl(value, fieldName) {
+  const trimmed = value.trim();
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error(`${fieldName} must be a valid absolute URL.`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`${fieldName} must use http or https.`);
+  }
+  return parsed.toString().replace(/\/+$/g, "");
+}
+function setFrontmatterString(frontmatter, key, nextValue, fallbackValue) {
+  const normalizedNext = typeof nextValue === "string" ? nextValue.trim() : "";
+  if (normalizedNext) {
+    frontmatter[key] = normalizedNext;
+    return;
+  }
+  const normalizedFallback = typeof fallbackValue === "string" ? fallbackValue.trim() : "";
+  if (normalizedFallback) {
+    frontmatter[key] = normalizedFallback;
+    return;
+  }
+  delete frontmatter[key];
 }
 function sanitizeCliToken(value, fieldName) {
   const trimmed = value.trim();
@@ -397,19 +450,11 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
     });
   }
   buildPublicUrl(file) {
-    const baseUrl = this.settings.publicBaseUrl.trim();
-    if (!baseUrl) {
+    const configuredBaseUrl = this.settings.publicBaseUrl.trim();
+    if (!configuredBaseUrl) {
       throw new Error("Set Public notes base URL in plugin settings first.");
     }
-    let parsedBaseUrl;
-    try {
-      parsedBaseUrl = new URL(baseUrl);
-    } catch {
-      throw new Error("Public notes base URL must be a valid absolute URL.");
-    }
-    if (parsedBaseUrl.protocol !== "http:" && parsedBaseUrl.protocol !== "https:") {
-      throw new Error("Public notes base URL must use http or https.");
-    }
+    const baseUrl = normalizeHttpUrl(configuredBaseUrl, "Public notes base URL");
     const prefix = this.settings.publicPathPrefix.trim().replace(/^\/+|\/+$/g, "");
     const extension = this.settings.publicExtension.trim();
     let relativePath = (0, import_obsidian.normalizePath)(file.path);
@@ -417,16 +462,36 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
       relativePath = relativePath.replace(/\.md$/i, extension);
     }
     const pathParts = [prefix, relativePath].filter(Boolean).join("/").split("/").filter(Boolean).map((part) => encodeURIComponent(part));
-    return `${parsedBaseUrl.toString().replace(/\/+$/g, "")}/${pathParts.join("/")}`;
+    return `${baseUrl}/${pathParts.join("/")}`;
   }
   async updateFrontmatter(file, data) {
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-      frontmatter["tdm_price_usd"] = data.priceUsd;
-      frontmatter["tdm_public_url"] = data.publicUrl;
-      frontmatter["tdm_resource_key"] = data.resourceKey ?? frontmatter["tdm_resource_key"] ?? "";
-      frontmatter["tdm_service_id"] = data.serviceId ?? frontmatter["tdm_service_id"] ?? "";
-      frontmatter["tdm_endpoint_path"] = data.endpointPath ?? frontmatter["tdm_endpoint_path"] ?? "";
-      frontmatter["tdm_delivery_type"] = data.deliveryType ?? frontmatter["tdm_delivery_type"] ?? "";
+      frontmatter["tdm_price_usd"] = normalizeUsdAmount(data.priceUsd, "tdm_price_usd");
+      frontmatter["tdm_public_url"] = normalizeHttpUrl(data.publicUrl, "tdm_public_url");
+      setFrontmatterString(
+        frontmatter,
+        "tdm_resource_key",
+        data.resourceKey,
+        frontmatter["tdm_resource_key"]
+      );
+      setFrontmatterString(
+        frontmatter,
+        "tdm_service_id",
+        data.serviceId,
+        frontmatter["tdm_service_id"]
+      );
+      setFrontmatterString(
+        frontmatter,
+        "tdm_endpoint_path",
+        data.endpointPath,
+        frontmatter["tdm_endpoint_path"]
+      );
+      setFrontmatterString(
+        frontmatter,
+        "tdm_delivery_type",
+        data.deliveryType,
+        frontmatter["tdm_delivery_type"]
+      );
       frontmatter["tdm_last_synced_at"] = (/* @__PURE__ */ new Date()).toISOString();
     });
   }
@@ -447,21 +512,37 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
   }
   async getUnlockMetadata(file) {
     const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-    const resourceId = String(frontmatter["tdm_resource_key"] ?? "").trim() || String(frontmatter["tdm_public_url"] ?? "").trim();
+    const resourceKey = String(frontmatter["tdm_resource_key"] ?? "").trim();
+    const publicUrl = String(frontmatter["tdm_public_url"] ?? "").trim();
     const priceUsd = String(frontmatter["tdm_price_usd"] ?? "").trim();
+    const resourceId = resourceKey || publicUrl;
     if (!resourceId || !priceUsd) {
       throw new Error(
         "This note is missing TDM unlock metadata. Expected tdm_resource_key or tdm_public_url plus tdm_price_usd in frontmatter."
       );
     }
     return {
-      resourceId,
+      resourceId: resourceKey || normalizeHttpUrl(publicUrl, "tdm_public_url"),
       priceUsd: normalizeUsdAmount(priceUsd, "tdm_price_usd")
     };
   }
   async runConnect() {
     new import_obsidian.Notice("TDM connect is starting. Complete the wallet flow in your browser.", 5e3);
-    const args = this.buildCliArgs(["connect", "--gateway", this.settings.gatewayUrl.trim() || DEFAULT_GATEWAY_URL]);
+    let gatewayUrl;
+    try {
+      gatewayUrl = normalizeHttpUrl(
+        this.settings.gatewayUrl.trim() || DEFAULT_GATEWAY_URL,
+        "Gateway URL"
+      );
+    } catch (error) {
+      new OutputModal(
+        this.app,
+        "TDM connect failed",
+        error instanceof Error ? error.message : String(error)
+      ).open();
+      return;
+    }
+    const args = this.buildCliArgs(["connect", "--gateway", gatewayUrl]);
     try {
       const result = await this.runCliCommand(args, { timeoutMs: 5 * 6e4 });
       new import_obsidian.Notice("TDM connect completed.", 4e3);
