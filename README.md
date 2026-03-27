@@ -7,7 +7,6 @@
 **Desktop-First Note Monetization**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-ff69b4?style=flat-square)](./LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-ff69b4?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-ff69b4?style=flat-square&logo=obsidian&logoColor=white)](https://obsidian.md/)
 
 *Desktop-first Obsidian plugin for the simplest TDM note flow: connect, monetize, unlock, and withdraw.*
