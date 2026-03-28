@@ -58,7 +58,7 @@ storage roots and runtime catalogs outside individual note URLs:
 - `tdm storage publish`
 - `tdm workspace`
 - `tdm status`
-- `tdm runtime`
+- `tdm workspace status`
 
 That is the broader runtime catalog path when a creator wants to keep assets on
 their own machine or server and still price them through TDM.
