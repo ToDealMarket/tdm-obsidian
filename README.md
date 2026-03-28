@@ -41,8 +41,8 @@ Desktop-first Obsidian plugin for the simplest TDM note flow:
 5. **Request payout** - Withdraw your publisher credits
 
 In the normal desktop path, `TDM: Connect` remains the explicit one-time setup.
-Under the hood, the broader `tdm` CLI can now auto-start that same gateway
-bootstrap when a live seller command is launched before setup is ready.
+Under the hood, the broader `tdm` CLI can now auto-start that same Live TDM
+setup when a live seller command is launched before setup is ready.
 
 This plugin is intentionally a **creator-layer** on top of the core TDM product.
 The main TDM surface is still paid APIs, tools, routes, and agent/runtime
@@ -152,7 +152,7 @@ separate assets and tag the release exactly as `0.0.1`.
 
 ### Connection Settings
 - `TDM CLI path`
-- `Gateway URL`
+- `Live TDM URL`
 - `Named vault`
 
 ### Unlock Behavior

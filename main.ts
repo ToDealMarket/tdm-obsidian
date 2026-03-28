@@ -756,7 +756,7 @@ export default class TdmObsidianPlugin extends Plugin {
     try {
       gatewayUrl = normalizeHttpUrl(
         this.settings.gatewayUrl.trim() || DEFAULT_GATEWAY_URL,
-        "Gateway URL",
+        "Live TDM URL",
       );
     } catch (error) {
       new OutputModal(
@@ -1046,8 +1046,8 @@ class TdmObsidianSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Gateway URL")
-      .setDesc("One-time connect will use this gateway URL.")
+      .setName("Live TDM URL")
+      .setDesc("One-time connect will use this Live TDM URL.")
       .addText((text) =>
         text
           .setPlaceholder(DEFAULT_GATEWAY_URL)

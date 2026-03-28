@@ -532,7 +532,7 @@ var TdmObsidianPlugin = class extends import_obsidian.Plugin {
     try {
       gatewayUrl = normalizeHttpUrl(
         this.settings.gatewayUrl.trim() || DEFAULT_GATEWAY_URL,
-        "Gateway URL"
+        "Live TDM URL"
       );
     } catch (error) {
       new OutputModal(
@@ -788,7 +788,7 @@ var TdmObsidianSettingTab = class extends import_obsidian.PluginSettingTab {
         await this.plugin.saveSettings();
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Gateway URL").setDesc("One-time connect will use this gateway URL.").addText(
+    new import_obsidian.Setting(containerEl).setName("Live TDM URL").setDesc("One-time connect will use this Live TDM URL.").addText(
       (text) => text.setPlaceholder(DEFAULT_GATEWAY_URL).setValue(this.plugin.settings.gatewayUrl).onChange(async (value) => {
         this.plugin.settings.gatewayUrl = value.trim() || DEFAULT_GATEWAY_URL;
         await this.plugin.saveSettings();
