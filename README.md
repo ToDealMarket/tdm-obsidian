@@ -40,10 +40,28 @@ Desktop-first Obsidian plugin for the simplest TDM note flow:
 4. **Check creator balance** - Monitor your earnings
 5. **Request payout** - Withdraw your publisher credits
 
+In the normal desktop path, `TDM: Connect` remains the explicit one-time setup.
+Under the hood, the broader `tdm` CLI can now auto-start that same gateway
+bootstrap when a live seller command is launched before setup is ready.
+
 This plugin is intentionally a **creator-layer** on top of the core TDM product.
 The main TDM surface is still paid APIs, tools, routes, and agent/runtime
 execution. Obsidian is the fast note-monetization path built on top of that
 same payment layer.
+
+For advanced desktop creators, the same `tdm` CLI can also manage named local
+storage roots and runtime catalogs outside individual note URLs:
+
+- `tdm storage add`
+- `tdm storage import-dir`
+- `tdm storage sync`
+- `tdm storage publish`
+- `tdm workspace`
+- `tdm status`
+- `tdm runtime`
+
+That is the broader runtime catalog path when a creator wants to keep assets on
+their own machine or server and still price them through TDM.
 
 ---
 
