@@ -63,6 +63,11 @@ storage roots and runtime catalogs outside individual note URLs:
 That is the broader runtime catalog path when a creator wants to keep assets on
 their own machine or server and still price them through TDM.
 
+If that broader runtime contour also uses agents or guarded routes, TDM now
+supports an optional allowlist policy at the project or vault level. This is
+not required for the normal note monetization flow, and leaving it unset keeps
+the runtime flexible by default.
+
 ---
 
 ## Current Scope
