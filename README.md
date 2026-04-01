@@ -98,7 +98,35 @@ the runtime flexible by default.
 
 ### Installation
 
-If the CLI is missing, install it with:
+#### Option 1: Manual Installation from GitHub
+
+1. Download the latest release from [GitHub Releases](https://github.com/todealmarket/tdm-obsidian/releases)
+2. Extract the following files from the release:
+   - `main.js`
+   - `manifest.json`
+   - `styles.css`
+3. Create a folder named `tdm-obsidian` in your Obsidian vault's plugins directory:
+   - Windows: `<vault>/.obsidian/plugins/tdm-obsidian/`
+   - macOS: `<vault>/.obsidian/plugins/tdm-obsidian/`
+   - Linux: `<vault>/.obsidian/plugins/tdm-obsidian/`
+4. Copy the three files into that folder
+5. Restart Obsidian
+6. Go to Settings → Community plugins → Enable "TDM for Obsidian"
+
+#### Option 2: Build from Source
+
+```bash
+git clone https://github.com/todealmarket/tdm-obsidian.git
+cd tdm-obsidian
+npm install
+npm run build
+```
+
+Then copy `main.js`, `manifest.json`, and `styles.css` to your vault's plugin folder.
+
+#### CLI Dependency
+
+The plugin requires the TDM CLI. Install it globally:
 
 ```bash
 npm install -g tdm-sdk
