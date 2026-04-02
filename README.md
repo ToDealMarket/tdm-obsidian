@@ -81,6 +81,7 @@ the runtime flexible by default.
 - Requires `tdm` CLI from `tdm-sdk`
 - Uses configured public notes base URL
 - Updates note frontmatter with TDM fields
+- Depends on the CLI/runtime path from `tdm-sdk`; it does not embed the newer gateway facade clients directly
 
 </td>
 <td width="50%">
