@@ -44,6 +44,16 @@ In the normal desktop path, `TDM: Connect` remains the explicit one-time setup.
 Under the hood, the broader `tdm` CLI can now auto-start that same Live TDM
 setup when a live seller command is launched before setup is ready.
 
+If the creator wants the same connected wallet to also become the saved live
+payout wallet during setup, the underlying CLI now supports:
+
+```bash
+tdm connect --sync-payout-wallet
+```
+
+Plain `tdm connect` still keeps payout wallets separate unless the creator
+explicitly syncs or saves them.
+
 This plugin is intentionally a **creator-layer** on top of the core TDM product.
 The main TDM surface is still paid APIs, tools, routes, and agent/runtime
 execution. Obsidian is the fast note-monetization path built on top of that
