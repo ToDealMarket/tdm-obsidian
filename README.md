@@ -45,14 +45,18 @@ Under the hood, the broader `tdm` CLI can now auto-start that same Live TDM
 setup when a live seller command is launched before setup is ready.
 
 If the creator wants the same connected wallet to also become the saved live
-payout wallet during setup, the underlying CLI now supports:
+payout wallet during setup, the underlying CLI now attempts that sync
+automatically when the inferred chain slot is still empty.
 
-```bash
-tdm connect --sync-payout-wallet
-```
+- existing saved payout wallets are not overwritten automatically
+- `tdm connect --no-sync-payout-wallet` keeps the flow local-only
+- if the account protects new payout destinations with TOTP step-up, run
+  `tdm security totp enroll`, then `tdm security totp verify`, and rerun
+  `tdm connect` or use `tdm payout wallets set`
 
-Plain `tdm connect` still keeps payout wallets separate unless the creator
-explicitly syncs or saves them.
+`tdm security totp enroll` now opens a local setup page with a QR by default.
+Use `--no-browser` if you want terminal-only setup with the secret or
+`otpauth://` URL.
 
 This plugin is intentionally a **creator-layer** on top of the core TDM product.
 The main TDM surface is still paid APIs, tools, routes, and agent/runtime
