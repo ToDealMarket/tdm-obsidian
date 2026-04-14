@@ -44,6 +44,11 @@ In the normal desktop path, `TDM: Connect` remains the explicit one-time setup.
 Under the hood, the broader `tdm` CLI can now auto-start that same Live TDM
 setup when a live seller command is launched before setup is ready.
 
+For the current multi-wallet MVP, you can connect one wallet per supported
+network. In practice, that means one Solana wallet and one Base/EVM wallet can
+be linked for the same local TDM setup, while payout wallets remain
+network-specific.
+
 If the creator wants the same connected wallet to also become the saved live
 payout wallet during setup, the underlying CLI now attempts that sync
 automatically when the inferred chain slot is still empty.
