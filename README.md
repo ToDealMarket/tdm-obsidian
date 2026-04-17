@@ -21,7 +21,7 @@
    ██║    ██████╔╝ ██║ ╚═╝ ██║
    ╚═╝    ╚═════╝  ╚═╝     ╚═╝
 
-TDM for Obsidian [V0.0.1]
+TDM for Obsidian [V0.0.2]
 Desktop-First Note Monetization
 Mode: local-first | Docs: todealmarket.com/docs
 ```
