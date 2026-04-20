@@ -68,6 +68,9 @@ The main TDM surface is still paid APIs, tools, routes, and agent/runtime
 execution. Obsidian is the fast note-monetization path built on top of that
 same payment layer.
 
+This repository is intentionally narrower than the broader TDM SDK. It focuses
+on the note flow only: connect, make payable, unlock, and creator payout.
+
 For advanced desktop creators, the same `tdm` CLI can also manage named local
 storage roots and runtime catalogs outside individual note URLs:
 
@@ -151,6 +154,12 @@ The plugin requires the TDM CLI. Install it globally:
 ```bash
 npm install -g tdm-sdk
 ```
+
+The public GitHub repo for `tdm-sdk` shows the open SDK surface:
+https://github.com/ToDealMarket/tdm-sdk
+
+The current npm beta distribution used by this plugin remains broader and
+includes the CLI flows documented here.
 
 ## Obsidian Community Release Notes
 

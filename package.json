@@ -1,9 +1,17 @@
 {
   "name": "tdm-obsidian",
   "version": "0.0.1",
-  "description": "Desktop-first Obsidian plugin for TDM note monetization",
+  "description": "Desktop-first Obsidian plugin for note monetization with TDM",
   "private": true,
   "main": "main.js",
+  "homepage": "https://todealmarket.com/docs/obsidian",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ToDealMarket/tdm-obsidian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ToDealMarket/tdm-obsidian/issues"
+  },
   "scripts": {
     "build": "node esbuild.mjs",
     "dev": "node esbuild.mjs --watch"
