@@ -8,6 +8,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-ff69b4?style=flat-square)](./LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-Plugin-ff69b4?style=flat-square&logo=obsidian&logoColor=white)](https://obsidian.md/)
+[![GitHub stars](https://img.shields.io/github/stars/ToDealMarket/tdm-obsidian?style=flat-square&color=ff69b4)](https://github.com/ToDealMarket/tdm-obsidian/stargazers)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-ff69b4?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 *Desktop-first Obsidian plugin for the simplest TDM note flow: connect, monetize, unlock, and withdraw.*
 
