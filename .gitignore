@@ -23,3 +23,8 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+
+# AI tool directories
+.mimocode/
+.claude/
+.codex/
